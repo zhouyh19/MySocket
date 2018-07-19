@@ -9,8 +9,17 @@ TCP=1 # Build TCP connection with the remoteserver
 UDP=2 # Build UDP association with the remoteserver
 BIND=3 # Reversed Link (Not implemented yet)
 
-MAX_BUFFER=1024 # The max size of the post recieved
+MAX_BUFFER=4096 # The max size of the post recieved
 MAX_CLIENT=3 # Maximum waiting clients num
+
+def Encipher(Post):
+  CipheredPost=b''
+  Key = 0x3c
+  for byte in Post:
+    Cipheredbyte=byte^Key
+    CipheredPost+=bytes((Cipheredbyte,))
+  return CipheredPost
+
 
 class PostTransmitter(threading.Thread):
   '''
@@ -24,7 +33,8 @@ class PostTransmitter(threading.Thread):
     while True:
       try:
         Post=self.AcceptSock.recv(MAX_BUFFER)
-        self.SendSock.send(Post)
+        SafePost=Encipher(Post)
+        self.SendSock.send(SafePost)
       except BrokenPipeError:
         pass
       except ConnectionResetError:
@@ -188,9 +198,9 @@ class TCPHandler(threading.Thread):
 if __name__ == '__main__':
   ServerSock=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
   print('Welcome !\n')
-  print('Please input the IP address and port you want to bind with.')
+  print('Please input the port you want to bind with.')
   try:
-    Address=input('IP address:')
+    Address='0.0.0.0'
     Port=input('Port:')
   except KeyboardInterrupt:
     print('\n\nbye bye.\n')
@@ -199,10 +209,9 @@ if __name__ == '__main__':
   try:
     ServerSock.bind((Address,int(Port)))
     ServerSock.listen(MAX_CLIENT)
-    while True:
-      CliSock,CliAddr=ServerSock.accept()
-      Thread=TCPHandler(CliSock)
-      Thread.start()
+    CliSock,CliAddr=ServerSock.accept()
+    Thread=TCPHandler(CliSock)
+    Thread.start()
   except OSError:
     print("Error: Address already in use. Please use another port.")
     os.sys.exit()
