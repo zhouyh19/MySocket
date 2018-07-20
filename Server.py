@@ -113,7 +113,7 @@ def Connect(Post):
     url,PostInfo['RemotePort']=struct.unpack('!'+str(Length)+'sH',Post[5:])
     PostInfo['Length']=Length
     PostInfo['url']=url
-    print('Connecting '+url)
+    print('Connecting '+str(url,encoding='utf-8'))
     PostInfo['RemoteAddress']=socket.gethostbyname(url)
   else:
     print('Error: Wrong address type.')

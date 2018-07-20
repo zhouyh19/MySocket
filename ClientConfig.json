@@ -1,9 +1,9 @@
 {
-  "RemoteIP":"159.65.13.72",
-  "RemotePort":9390,
-  "LocalIP":"127.0.0.1",
-  "LocalPort":9290,
-  "Username":"dracitzhang",
-  "Password":"MasterSpark",
-  "Method":2
+  "RemoteIP":"",
+  "RemotePort":,
+  "LocalIP":"",
+  "LocalPort":,
+  "Username":"",
+  "Password":"",
+  "Method":
 }
