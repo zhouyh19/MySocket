@@ -63,17 +63,11 @@ def HandShake(Post):
   for i in range(0,MethodNum):
     Format+='B'
   Methods = struct.unpack(Format,Post)
-  if Method == 0:
-    if 0 in Methods:
-      AcceptMethod=0x00 
-    else:
-      AcceptMethod=0xff
+  if 0 in Methods:
+    AcceptMethod=0x00 
+  else:
+    AcceptMethod=0xff
     # If client doesn't support no authentacation mode, refuse its request.
-  if Method == 2:
-    if 2 in Methods:
-      AcceptMethod=0x02
-    else:
-      AcceptMethod=0xff
   Answer=struct.pack('!BB',Version,AcceptMethod)
   return Answer
 
@@ -119,6 +113,7 @@ def Connect(Post):
     url,PostInfo['RemotePort']=struct.unpack('!'+str(Length)+'sH',Post[5:])
     PostInfo['Length']=Length
     PostInfo['url']=url
+    print('Connecting '+url)
     PostInfo['RemoteAddress']=socket.gethostbyname(url)
   else:
     print('Error: Wrong address type.')

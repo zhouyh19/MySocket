@@ -73,7 +73,7 @@ class TCPHandler(threading.Thread):
       Request=Construct()
       self.RemoteSock.send(Request)
       Answer=self.RemoteSock.recv(MAX_BUFFER)
-      if Answer != '\x05\x00':
+      if Answer != b'\x05\x00':
         print('Invalid Username or wrong password.')
         os.sys.exit()
     SendThread=PostTransmitter(self.ClientSock,self.RemoteSock)
