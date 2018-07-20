@@ -2,6 +2,7 @@ import socket
 import struct
 import threading
 import os
+import json
 
 # Define 4 status of the HandShake period.
 REFUSED=0 # Connection denied by this server.
@@ -11,6 +12,12 @@ BIND=3 # Reversed Link (Not implemented yet)
 
 MAX_BUFFER=4096 # The max size of the post recieved
 MAX_CLIENT=3 # Maximum waiting clients num
+
+Method=0 # Authentacation method.
+# 0 represents no authentacation
+# 2 represents Username-Password
+Username=''
+Passwd=''
 
 def Encipher(Post):
   CipheredPost=b''
@@ -56,30 +63,36 @@ def HandShake(Post):
   for i in range(0,MethodNum):
     Format+='B'
   Methods = struct.unpack(Format,Post)
-  if 0 in Methods:
-    Method=0x00 # No authentication needed yet
-  else:
-    Method=0xff
+  if Method == 0:
+    if 0 in Methods:
+      AcceptMethod=0x00 
+    else:
+      AcceptMethod=0xff
     # If client doesn't support no authentacation mode, refuse its request.
-  Answer=struct.pack('!BB',Version,Method)
+  if Method == 2:
+    if 2 in Methods:
+      AcceptMethod=0x02
+    else:
+      AcceptMethod=0xff
+  Answer=struct.pack('!BB',Version,AcceptMethod)
+  return Answer
+
+def Verify(Post):
+  Version,ULen=struct.unpack('!BB',Post[:2])
+  Uname,PLen=struct.unpack('!'+str(ULen)+"sB",Post[2:3+ULen])
+  Pw=struct.unpack('!'+str(PLen)+'s',Post[3+ULen:])
+  if Uname == Username and Pw == Passwd:
+    reply=0x00
+  else:
+    reply=0xff
+  Answer=struct.pack('!BB',Version,reply)
   return Answer
 
 def Connect(Post):
   '''
   The second handshake with client.
   '''
-    # +----+-----+-------+------+----------+----------+
-    # |VER | CMD |  RSV  | ATYP | DST.ADDR | DST.PORT |
-    # +----+-----+-------+------+----------+----------+
-    # | 1  |  1  |   1   |  1   | Variable |    2     |
-    # +----+-----+-------+------+----------+----------+
-
-    # +----+-----+-------+------+----------+----------+
-    # |VER | REP |  RSV  | ATYP | BND.ADDR | BND.PORT |
-    # +----+-----+-------+------+----------+----------+
-    # | 1  |  1  |   1   |  1   | Variable |    2     |
-    # +----+-----+-------+------+----------+----------+
-
+  
   PostInfo={}
   if Post != b'':
     PostInfo['Version'],PostInfo['Command'],PostInfo['RSV'],PostInfo['AddrType']\
@@ -134,6 +147,9 @@ class TCPHandler(threading.Thread):
     threading.Thread.__init__(self)
     self.ClientSock=ClientSock
   def run(self):
+    if Method == 2:
+      Post=self.ClientSock.recv(MAX_BUFFER)
+      self.ClientSock.send(Verify(Post))
     # First Handshake
     RawPost=self.ClientSock.recv(MAX_BUFFER)
     Post=Encipher(RawPost)
@@ -201,13 +217,35 @@ class TCPHandler(threading.Thread):
 if __name__ == '__main__':
   ServerSock=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
   print('Welcome !\n')
-  print('Please input the port you want to bind with.')
   try:
-    Address='0.0.0.0'
-    Port=input('Port:')
-  except KeyboardInterrupt:
-    print('\n\nbye bye.\n')
-    os.sys.exit()
+    ConfigFile=open("./ServerConfig.json","r")
+    Config=json.load(ConfigFile)
+  except:
+    print('Cannot open the config file.')
+    print('Please input config information yourself.\n')
+    print('Please input the port you want to bind with.')
+    try:
+      Address='0.0.0.0'
+      Port=input('Port:')
+    except KeyboardInterrupt:
+      print('\n\nbye bye.\n')
+      os.sys.exit()
+  else:
+    try:
+      Address=Config['BindIP']
+      Port=Config['BindPort']
+      Method=Config['Method']
+      if Method == 2:
+        Username=Config['Username']
+        Passwd=Config['Password']
+      elif Method == 0:
+        pass
+      else:
+        print("This method is not supported.")
+        os.sys.exit()
+    except KeyError:
+      print('Config information error. Please check your config file.')
+      os.sys.exit()
   print("\nWaiting for connection ...\n")
   try:
     ServerSock.bind((Address,int(Port)))
