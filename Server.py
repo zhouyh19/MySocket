@@ -80,8 +80,8 @@ def HandShake(Post):
 def Verify(Post):
   Version,ULen=struct.unpack('!BB',Post[:2])
   Uname,PLen=struct.unpack('!'+str(ULen)+"sB",Post[2:3+ULen])
-  Pw=struct.unpack('!'+str(PLen)+'s',Post[3+ULen:])
-  if Uname == Username and Pw == Passwd:
+  Pw,=struct.unpack('!'+str(PLen)+'s',Post[3+ULen:])
+  if Uname == bytes(Username,encoding='utf-8') and Pw == bytes(Passwd,encoding='utf-8'):
     reply=0x00
   else:
     reply=0xff

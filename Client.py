@@ -30,7 +30,9 @@ def Encipher(Post):
 def Construct():
   ULen=len(Username)
   PLen=len(Passwd)
-  Post=struct.pack("!BB"+str(ULen)+"sB"+str(PLen)+"s",0x05,ULen,Username,PLen,Passwd)
+  UName=bytes(Username,encoding='utf-8')
+  Pw=bytes(Passwd,encoding='utf-8')
+  Post=struct.pack("!BB"+str(ULen)+"sB"+str(PLen)+"s",0x05,ULen,UName,PLen,Pw)
   return Post
 
 
