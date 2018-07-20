@@ -135,10 +135,13 @@ class TCPHandler(threading.Thread):
     self.ClientSock=ClientSock
   def run(self):
     # First Handshake
-    Post=self.ClientSock.recv(MAX_BUFFER)
-    self.ClientSock.send(HandShake(Post))
+    RawPost=self.ClientSock.recv(MAX_BUFFER)
+    Post=Encipher(RawPost)
+    self.ClientSock.send(Encipher(HandShake(Post)))
     # Second Handshake,gain information.
-    PostInfo,Status=Connect(self.ClientSock.recv(MAX_BUFFER))
+    RawPost=self.ClientSock.recv(MAX_BUFFER)
+    Post=Encipher(RawPost)
+    PostInfo,Status=Connect(Post)
 
     # Judge Status
     if Status == REFUSED:
@@ -146,7 +149,7 @@ class TCPHandler(threading.Thread):
       print('Request refused.')
       Answer=struct.pack('!BBBB',\
       PostInfo['Version'],PostInfo['REP'],PostInfo['RSV'],PostInfo['AddrType'])
-      self.ClientSock.send(Answer)
+      self.ClientSock.send(Encipher(Answer))
       self.ClientSock.close()
       return
     else:
@@ -177,7 +180,7 @@ class TCPHandler(threading.Thread):
           print('Error: Connection refused.')
           RemoteSock.close()
         else:
-          self.ClientSock.send(Answer)
+          self.ClientSock.send(Encipher(Answer))
           SendThread=PostTransmitter(self.ClientSock,RemoteSock)
           AcceptThread=PostTransmitter(RemoteSock,self.ClientSock)
           SendThread.start()
@@ -185,9 +188,9 @@ class TCPHandler(threading.Thread):
           # RAM leakage warning
       elif Status == UDP:
         RemoteSock=socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
-        self.ClientSock.send(Answer)
+        self.ClientSock.send(Encipher(Answer))
       else:
-        self.ClientSock.send(Answer)
+        self.ClientSock.send(Encipher(Answer))
         self.ClientSock.close()
         return
 
@@ -209,9 +212,10 @@ if __name__ == '__main__':
   try:
     ServerSock.bind((Address,int(Port)))
     ServerSock.listen(MAX_CLIENT)
-    CliSock,CliAddr=ServerSock.accept()
-    Thread=TCPHandler(CliSock)
-    Thread.start()
+    while True:
+      CliSock,CliAddr=ServerSock.accept()
+      Thread=TCPHandler(CliSock)
+      Thread.start()
   except OSError:
     print("Error: Address already in use. Please use another port.")
     os.sys.exit()
