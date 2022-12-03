@@ -69,63 +69,34 @@ class TCPHandler(threading.Thread):
     except:
       print('Some error occured.')
   def run(self):
-    if Method == 2:
+    '''if Method == 2:
       Request=Construct()
       self.RemoteSock.send(Request)
       Answer=self.RemoteSock.recv(MAX_BUFFER)
       if Answer != b'\x05\x00':
         print('Invalid Username or wrong password.')
-        os.sys.exit()
+        os.sys.exit()'''
     SendThread=PostTransmitter(self.ClientSock,self.RemoteSock)
     AcceptThread=PostTransmitter(self.RemoteSock,self.ClientSock)
     SendThread.start()
     AcceptThread.start()
 
-
- 
-      
-
 if __name__ == '__main__':
   ServerSock=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
   print('Welcome !\n')
+  ConfigFile=open("./ClientConfig.json","r")
+  Config=json.load(ConfigFile)
+  
   try:
-    ConfigFile=open("./ClientConfig.json","r")
-    Config=json.load(ConfigFile)
-  except:
-    print('Cannot open the config file.')
-    print('Please input config information yourself.\n')
-    print('Please input the IP address and port you want to bind with.')
-    try:
-      Address=input('IP address:')
-      Port=input('Port:')
-    except KeyboardInterrupt:
-      print('\n\nbye bye.\n')
-      os.sys.exit()
-    print('Please input the IP address and port of the proxy server.')
-    try:
-      RemoteAddress=input('IP address:')
-      RemotePort=input('Port:')
-    except KeyboardInterrupt:
-      print('\n\nbye bye.\n')
-      os.sys.exit()
-  else:
-    try:
-      Address=Config['LocalIP']
-      Port=Config['LocalPort']
-      Method=Config['Method']
-      RemoteAddress=Config['RemoteIP']
-      RemotePort=Config['RemotePort']
-      if Method == 2:
-        Username=Config['Username']
-        Passwd=Config['Password']
-      elif Method == 0:
-        pass
-      else:
-        print("This method is not supported.")
-        os.sys.exit()
-    except KeyError:
-      print('Config information error. Please check your config file.')
-      os.sys.exit()
+    Address=Config['LocalIP']
+    Port=Config['LocalPort']
+    RemoteAddress=Config['RemoteIP']
+    RemotePort=Config['RemotePort']
+    Username=Config['Username']
+    Passwd=Config['Password']
+  except KeyError:
+    print('Config information error. Please check your config file.')
+    os.sys.exit()
 
   print("\nWaiting for connection ...\n")
   try:
@@ -143,8 +114,3 @@ if __name__ == '__main__':
     os.sys.exit()
   finally:
     ServerSock.close()
-
-
-  
-  
-  

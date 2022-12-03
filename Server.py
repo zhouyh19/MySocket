@@ -102,19 +102,6 @@ def Connect(Post):
     Format='!'+str(Length)+'sH'
     RawAddress,PostInfo['RemotePort']=struct.unpack(Format,Post[4:])
     PostInfo['RemoteAddress']=socket.inet_ntoa(RawAddress)
-  elif PostInfo['AddrType'] == 0x04:
-    Length=16
-    # Parse RemoteServer's address by AddrType
-    Format='!'+str(Length)+'sH'
-    RawAddress,PostInfo['RemotePort']=struct.unpack(Format,Post[4:])
-    PostInfo['RemoteAddress']=socket.inet_ntoa(RawAddress)
-  elif PostInfo['AddrType'] == 0x03:
-    Length,=struct.unpack('!B',Post[4:5])
-    url,PostInfo['RemotePort']=struct.unpack('!'+str(Length)+'sH',Post[5:])
-    PostInfo['Length']=Length
-    PostInfo['url']=url
-    print('Connecting '+str(url,encoding='utf-8'))
-    PostInfo['RemoteAddress']=socket.gethostbyname(url)
   else:
     print('Error: Wrong address type.')
     PostInfo['REP']=0x08
@@ -124,12 +111,6 @@ def Connect(Post):
   if PostInfo['Command'] == 0x01:
     PostInfo['REP']=0x00
     return (PostInfo,TCP)
-  elif PostInfo['Command'] == 0x02:
-    PostInfo['REP']=0x08
-    return (PostInfo,BIND)
-  elif PostInfo['Command'] == 0x03:
-    PostInfo['REP']=0x00
-    return (PostInfo,UDP)
   else:
     PostInfo['REP']=0x02
     return (PostInfo,REFUSED)
@@ -142,9 +123,9 @@ class TCPHandler(threading.Thread):
     threading.Thread.__init__(self)
     self.ClientSock=ClientSock
   def run(self):
-    if Method == 2:
+    '''if Method == 2:
       Post=self.ClientSock.recv(MAX_BUFFER)
-      self.ClientSock.send(Verify(Post))
+      self.ClientSock.send(Verify(Post))'''
     # First Handshake
     RawPost=self.ClientSock.recv(MAX_BUFFER)
     Post=Encipher(RawPost)
@@ -165,82 +146,45 @@ class TCPHandler(threading.Thread):
       return
     else:
       # Assemble the answer
-      if PostInfo['AddrType'] == 0x01:
-        Length=4
-        Answer=struct.pack('!BBBB'+str(Length)+'sH',\
-        PostInfo['Version'],PostInfo['REP'],PostInfo['RSV'],PostInfo['AddrType'],\
-        socket.inet_aton(PostInfo['RemoteAddress']),PostInfo['RemotePort'])
-      elif PostInfo['AddrType'] == 0x04:
-        Length=16
-        Answer=struct.pack('!BBBB'+str(Length)+'sH',\
-        PostInfo['Version'],PostInfo['REP'],PostInfo['RSV'],PostInfo['AddrType'],\
-        socket.inet_aton(PostInfo['RemoteAddress']),PostInfo['RemotePort'])
-      elif PostInfo['AddrType'] == 0x03:
-        Answer=struct.pack('!BBBBB'+str(PostInfo['Length'])+'sH',\
-        PostInfo['Version'],PostInfo['REP'],PostInfo['RSV'],PostInfo['AddrType'],\
-        PostInfo['Length'],PostInfo['url'],PostInfo['RemotePort'])
-      else:
-        Length=0
+
+      Length=4
+      Answer=struct.pack('!BBBB'+str(Length)+'sH',\
+      PostInfo['Version'],PostInfo['REP'],PostInfo['RSV'],PostInfo['AddrType'],\
+      socket.inet_aton(PostInfo['RemoteAddress']),PostInfo['RemotePort'])
+      
       
       # Connect or associate with the remote server.
-      if Status == TCP:
-        try:
-          RemoteSock=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
-          RemoteSock.connect((PostInfo['RemoteAddress'],PostInfo['RemotePort']))
-        except ConnectionRefusedError:
-          print('Error: Connection refused.')
-          RemoteSock.close()
-        else:
-          self.ClientSock.send(Encipher(Answer))
-          SendThread=PostTransmitter(self.ClientSock,RemoteSock)
-          AcceptThread=PostTransmitter(RemoteSock,self.ClientSock)
-          SendThread.start()
-          AcceptThread.start()
-          # RAM leakage warning
-      elif Status == UDP:
-        RemoteSock=socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
-        self.ClientSock.send(Encipher(Answer))
+      try:
+        RemoteSock=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+        RemoteSock.connect((PostInfo['RemoteAddress'],PostInfo['RemotePort']))
+      except ConnectionRefusedError:
+        print('Error: Connection refused.')
+        RemoteSock.close()
       else:
         self.ClientSock.send(Encipher(Answer))
-        self.ClientSock.close()
+        SendThread=PostTransmitter(self.ClientSock,RemoteSock)
+        AcceptThread=PostTransmitter(RemoteSock,self.ClientSock)
+        SendThread.start()
+        AcceptThread.start()
+        # RAM leakage warning
         return
 
-
- 
-      
 
 if __name__ == '__main__':
   ServerSock=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
   print('Welcome !\n')
+  ConfigFile=open("./ServerConfig.json","r")
+  Config=json.load(ConfigFile)
   try:
-    ConfigFile=open("./ServerConfig.json","r")
-    Config=json.load(ConfigFile)
-  except:
-    print('Cannot open the config file.')
-    print('Please input config information yourself.\n')
-    print('Please input the port you want to bind with.')
-    try:
-      Address='0.0.0.0'
-      Port=input('Port:')
-    except KeyboardInterrupt:
-      print('\n\nbye bye.\n')
-      os.sys.exit()
-  else:
-    try:
-      Address=Config['BindIP']
-      Port=Config['BindPort']
-      Method=Config['Method']
-      if Method == 2:
-        Username=Config['Username']
-        Passwd=Config['Password']
-      elif Method == 0:
-        pass
-      else:
-        print("This method is not supported.")
-        os.sys.exit()
-    except KeyError:
-      print('Config information error. Please check your config file.')
-      os.sys.exit()
+    Address=Config['BindIP']
+    Port=Config['BindPort']
+    Method=Config['Method']
+    Username=Config['Username']
+    Passwd=Config['Password']
+  except KeyError:
+    print('Config information error. Please check your config file.')
+    os.sys.exit()
+
   print("\nWaiting for connection ...\n")
   try:
     ServerSock.bind((Address,int(Port)))
