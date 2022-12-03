@@ -127,9 +127,9 @@ class TCPHandler(threading.Thread):
       Post=self.ClientSock.recv(MAX_BUFFER)
       self.ClientSock.send(Verify(Post))'''
     # First Handshake
-    RawPost=self.ClientSock.recv(MAX_BUFFER)
+    '''RawPost=self.ClientSock.recv(MAX_BUFFER)
     Post=Encipher(RawPost)
-    self.ClientSock.send(Encipher(HandShake(Post)))
+    self.ClientSock.send(Encipher(HandShake(Post)))'''
     # Second Handshake,gain information.
     RawPost=self.ClientSock.recv(MAX_BUFFER)
     Post=Encipher(RawPost)
@@ -201,8 +201,3 @@ if __name__ == '__main__':
     os.sys.exit()
   finally:
     ServerSock.close()
-
-
-  
-  
-  

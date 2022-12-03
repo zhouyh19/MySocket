@@ -35,6 +35,29 @@ def Construct():
   Post=struct.pack("!BB"+str(ULen)+"sB"+str(PLen)+"s",0x05,ULen,UName,PLen,Pw)
   return Post
 
+def HandShake(Post):
+  '''
+  Handle the handshake period of server and client.
+  ''' 
+    # +-----+----------+----------+
+    # | VER | NMETHODS | METHODS  |
+    # +-----+----------+----------+
+    # |  1  |    1     |  1~255   |
+    # +-----+----------+----------+
+  Version,MethodNum = struct.unpack('!BB',Post[:2])
+  Post=Post[2:]
+  Format='!'
+  for i in range(0,MethodNum):
+    Format+='B'
+  Methods = struct.unpack(Format,Post)
+  if 0 in Methods:
+    AcceptMethod=0x00 
+  else:
+    AcceptMethod=0xff
+    # If client doesn't support no authentacation mode, refuse its request.
+  Answer=struct.pack('!BB',Version,AcceptMethod)
+  print("handshake!")
+  return Answer
 
 class PostTransmitter(threading.Thread):
   '''
@@ -76,6 +99,11 @@ class TCPHandler(threading.Thread):
       if Answer != b'\x05\x00':
         print('Invalid Username or wrong password.')
         os.sys.exit()'''
+    
+    RawPost=self.ClientSock.recv(MAX_BUFFER)
+    #Post=Encipher(RawPost)
+    self.ClientSock.send(HandShake(RawPost))
+
     SendThread=PostTransmitter(self.ClientSock,self.RemoteSock)
     AcceptThread=PostTransmitter(self.RemoteSock,self.ClientSock)
     SendThread.start()
