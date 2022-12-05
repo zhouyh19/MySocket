@@ -3,6 +3,7 @@ import struct
 import threading
 import os
 import json
+import encrypt
 
 # Define 4 status of the HandShake period.
 REFUSED=0 # Connection denied by this server.
@@ -12,6 +13,9 @@ BIND=3 # Reversed Link (Not implemented yet)
 
 MAX_BUFFER=4096 # The max size of the post recieved
 MAX_CLIENT=3 # Maximum waiting clients num
+
+SEND=0
+RECEIVE=1
 
 Method=0 # Authentacation method.
 # 0 represents no authentacation
@@ -32,15 +36,21 @@ class PostTransmitter(threading.Thread):
   '''
   Recieve post from a socket,and transmit it to another.
   '''
-  def __init__(self,Sock_1,Sock_2):
+  def __init__(self,Sock_1,Sock_2,mode):
     threading.Thread.__init__(self)
     self.AcceptSock=Sock_1
     self.SendSock=Sock_2
+    self.mode=mode 
+
   def run(self):
     while True:
       try:
         Post=self.AcceptSock.recv(MAX_BUFFER)
-        SafePost=Encipher(Post)
+        #SafePost=Encipher(Post)
+        if self.mode==SEND:
+          SafePost=encrypt.MyAESencrypt(Post)
+        else: 
+          SafePost=encrypt.MyAESdecrypt(Post)
         self.SendSock.send(SafePost)
       except BrokenPipeError:
         pass
@@ -131,43 +141,39 @@ class TCPHandler(threading.Thread):
     Post=Encipher(RawPost)
     self.ClientSock.send(Encipher(HandShake(Post)))'''
     # Second Handshake,gain information.
-    RawPost=self.ClientSock.recv(MAX_BUFFER)
-    Post=Encipher(RawPost)
-    PostInfo,Status=Connect(Post)
+    Post=self.ClientSock.recv(MAX_BUFFER)
+    #Post=Encipher(RawPost)
+    #PostInfo,Status=Connect(Post)
+    Status,RawAddress,RemotePort=struct.unpack("!B4s",Post)
+    RemoteAddress=socket.inet_ntoa(RawAddress)
+
+    if Status == TCP:
+      try:
+        RemoteSock=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+        RemoteSock.connect(RemoteAddress,RemotePort)
+      except ConnectionRefusedError:
+        print('Error: Connection refused.')
+        RemoteSock.close()
+        Status=REFUSED
 
     # Judge Status
     if Status == REFUSED:
       # If server refuses client's request,send the answer and close the socket.
       print('Request refused.')
-      Answer=struct.pack('!BBBB',\
-      PostInfo['Version'],PostInfo['REP'],PostInfo['RSV'],PostInfo['AddrType'])
-      self.ClientSock.send(Encipher(Answer))
+      Answer=struct.pack('!B',0)
+      self.ClientSock.send(Answer)
       self.ClientSock.close()
       return
     else:
       # Assemble the answer
-
-      Length=4
-      Answer=struct.pack('!BBBB'+str(Length)+'sH',\
-      PostInfo['Version'],PostInfo['REP'],PostInfo['RSV'],PostInfo['AddrType'],\
-      socket.inet_aton(PostInfo['RemoteAddress']),PostInfo['RemotePort'])
-      
-      
-      # Connect or associate with the remote server.
-      try:
-        RemoteSock=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
-        RemoteSock.connect((PostInfo['RemoteAddress'],PostInfo['RemotePort']))
-      except ConnectionRefusedError:
-        print('Error: Connection refused.')
-        RemoteSock.close()
-      else:
-        self.ClientSock.send(Encipher(Answer))
-        SendThread=PostTransmitter(self.ClientSock,RemoteSock)
-        AcceptThread=PostTransmitter(RemoteSock,self.ClientSock)
-        SendThread.start()
-        AcceptThread.start()
-        # RAM leakage warning
-        return
+      Answer=struct.pack('!B',1)
+      self.ClientSock.send(Answer)
+      SendThread=PostTransmitter(self.ClientSock,RemoteSock,RECEIVE)
+      AcceptThread=PostTransmitter(RemoteSock,self.ClientSock,SEND)
+      SendThread.start()
+      AcceptThread.start()
+      # RAM leakage warning
+      return
 
 
 if __name__ == '__main__':
