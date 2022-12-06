@@ -16,34 +16,38 @@ def generateRSAkeys():
     file_out.write(public_key)
     
 
-#AES_K = b'AKeyForAESlen=16'
-#AES_IV = b'AvectorAESlen=16'
+AES_K = b'AKeyForAESlen=16'
+AES_IV = b'AvectorAESlen=16'
 
-def MyAESencrypt(text,AES_K):
-    aesCBCencrypter = AES.new(AES_K,AES.MODE_CBC,AES_K[:16])
+def MyAESencrypt(text):
+    aesCBCencrypter = AES.new(AES_K,AES.MODE_CBC,AES_IV)
     cipher_text = aesCBCencrypter.encrypt(text)
     return cipher_text
 
-def MyAESdecrypt(text,AES_K):
-    aesCBCdecrypter = AES.new(AES_K,AES.MODE_CBC,AES_K[:16])
+def MyAESdecrypt(text):
+    aesCBCdecrypter = AES.new(AES_K,AES.MODE_CBC,AES_IV)
     plain_text = aesCBCdecrypter.decrypt(text)
     return plain_text
 
-def MyFullEncrypt(text,AES_= b'AKeyForAESlen=16'):
+def MyFullEncrypt(text):
     digest = SHA256.new(text)
-    PrivK = open('private_key.pem')
+    try:
+        PrivK = open('private_key.pem')
+    except IOError:
+        generateRSAkeys()
+        PrivK = open('private_key.pem')
     private_key = RSA.import_key(PrivK.read())
     signature = pkcs1_15.new(private_key).sign(digest)
     M_lenM_EkraHM = pad(str(len(text)).encode('utf-8'),16) + text + signature
     M_lenM_EkraHM = pad(M_lenM_EkraHM,16)
-    return MyAESencrypt(M_lenM_EkraHM,AES_K)
+    return MyAESencrypt(M_lenM_EkraHM)
     
 
 
-def MyFullDecrypt(cipher,AES_K= b'AKeyForAESlen=16'):
+def MyFullDecrypt(cipher):
     PubK = open('other.pem')
     other_public_key = RSA.import_key(PubK.read())
-    aesdcr = MyAESdecrypt(cipher,AES_K)
+    aesdcr = MyAESdecrypt(cipher)
     aesdcr = unpad(aesdcr,16)
     lenM = int(str(unpad(aesdcr[0:16],16),encoding='utf-8'))
     M = aesdcr[16:][0:lenM]
@@ -51,23 +55,26 @@ def MyFullDecrypt(cipher,AES_K= b'AKeyForAESlen=16'):
     digest = SHA256.new(M)
     try:
         pkcs1_15.new(other_public_key).verify(digest, sign)
-        valid=True
+        print('signature Valid')
     except (ValueError,TypeError):
-        valid=False
-    return M
+        print('signature InValid')
 
 
-def MyRSAencrypt(text):
-    PubK = open('other.pem')
-    other_public_key = RSA.import_key(PubK.read())
+def MyRSAencrypt(text,other_public_key):
+    #用对方的公钥加密，收到时用自己的私钥解密
     text = text.encode('utf-8')
     text = pad(text,16)
-    cipher = PKCS1_OAEP.new(other_public_key)
+    cipher = PKCS1_OAEP.new(public_key)
     encrypted = cipher.encrypt(text)
     return encrypted
 
 def MyRSAdecrypt(encrypted):
-    PrivK = open('private_key.pem')
+    #用对方的公钥加密，收到时用自己的私钥解密
+    try:
+        PrivK = open('private_key.pem')
+    except IOError:
+        generateRSAkeys()
+        PrivK = open('private_key.pem')
     private_key = RSA.import_key(PrivK.read())
     cipher = PKCS1_OAEP.new(private_key)
     decrypted = cipher.decrypt(encrypted)
@@ -75,11 +82,17 @@ def MyRSAdecrypt(encrypted):
     return decrypted
 
 
-
-''' 
+    
 test_message = 'try test our socket program'
+test_text2 = 'try a test string again'
 public_key = RSA.import_key(open('public_key.pem').read())
 cipher = MyFullEncrypt(test_message)
 MyFullDecrypt(cipher,public_key)
-'''   
-generateRSAkeys()
+
+enc = MyRSAencrypt(test_text2, public_key)
+print(enc,type(enc))
+dec = MyRSAdecrypt(enc)
+print(dec)
+
+
+

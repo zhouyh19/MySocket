@@ -4,6 +4,7 @@ import threading
 import os
 import json
 import encrypt
+import uuid
 
 # Define 4 status of the HandShake period.
 REFUSED=0 # Connection denied by this server.
@@ -66,14 +67,17 @@ def HandShake(Post):
 def Connect(Post,RemoteSock):
   PostInfo={}
   PostInfo['Version'],PostInfo['Command'],PostInfo['RSV'],PostInfo['AddrType'] = struct.unpack('!BBBB',Post[:4])
+  PostInfo["AES_K"]=str(uuid.uuid4()).encode('utf-8')[:16]
   
-  if PostInfo['AddrType'] == 0x01:
+  if PostInfo['AddrType'] == 0x03:
     
     # Parse RemoteServer's address by AddrType
-    Format='!4sH'
-    PostInfo['RawAddress'],PostInfo['RemotePort']=struct.unpack(Format,Post[4:])
-    PostInfo['RemoteAddress']=socket.inet_ntoa(PostInfo['RawAddress'])
-    print(PostInfo['RemoteAddress'],type(PostInfo['RawAddress']),type(PostInfo['RemoteAddress']))
+    Length,=struct.unpack('!B',Post[4:5])
+    url,PostInfo['RemotePort']=struct.unpack('!'+str(Length)+'sH',Post[5:])
+    PostInfo['Length']=Length
+    PostInfo['url']=url
+    print('Connecting '+str(url,encoding='utf-8'))
+    #PostInfo['RemoteAddress']=socket.gethostbyname(url)
   else:
     print('Error: Wrong address type.')
     PostInfo['REP']=0x08
@@ -92,11 +96,12 @@ class PostTransmitter(threading.Thread):
   '''
   Recieve post from a socket,and transmit it to another.
   '''
-  def __init__(self,Sock_1,Sock_2,mode):
+  def __init__(self,Sock_1,Sock_2,mode,AES_K):
     threading.Thread.__init__(self)
     self.AcceptSock=Sock_1
     self.SendSock=Sock_2
-    self.mode=mode 
+    self.mode=mode
+    self.AES_K=AES_K
 
   def run(self):
     while True:
@@ -104,9 +109,9 @@ class PostTransmitter(threading.Thread):
         Post=self.AcceptSock.recv(MAX_BUFFER)
         #SafePost=Encipher(Post)
         if self.mode==SEND:
-          SafePost=encrypt.MyAESencrypt(Post)
+          SafePost=encrypt.MyFullEncrypt(Post,self.AES_K)
         else: 
-          SafePost=encrypt.MyAESdecrypt(Post)
+          SafePost=encrypt.MyFullDecrypt(Post,self.AES_K)
         self.SendSock.send(SafePost)
       except BrokenPipeError:
         pass
@@ -141,8 +146,9 @@ class TCPHandler(threading.Thread):
 
     Post=self.ClientSock.recv(MAX_BUFFER)
     PostInfo,status=Connect(Post,self.RemoteSock)
-    
-    Post=struct.pack("!B4sH",status,PostInfo["RawAddress"],PostInfo["RemotePort"])
+    print("sending aes",PostInfo["AES_K"],len(PostInfo["AES_K"]))
+    fmt="!BHB16s"+str(PostInfo["Length"])+"s"
+    Post=struct.pack(fmt,status,PostInfo["RemotePort"],PostInfo["Length"],PostInfo["AES_K"],PostInfo["url"])
     self.RemoteSock.send(Post)
     Post=self.RemoteSock.recv(MAX_BUFFER)
 
@@ -153,17 +159,17 @@ class TCPHandler(threading.Thread):
       PostInfo['Version'],PostInfo['REP'],PostInfo['RSV'],PostInfo['AddrType'])
     
     else: 
-      Answer=struct.pack('!BBBB4sH',\
+      Answer=struct.pack('!BBBBB'+str(PostInfo['Length'])+'sH',\
       PostInfo['Version'],PostInfo['REP'],PostInfo['RSV'],PostInfo['AddrType'],\
-      socket.inet_aton(PostInfo['RemoteAddress']),PostInfo['RemotePort'])
+      PostInfo['Length'],PostInfo['url'],PostInfo['RemotePort'])
 
     self.ClientSock.send(Answer)
     if Success==0:
       self.ClientSock.close()
       return
 
-    SendThread=PostTransmitter(self.ClientSock,self.RemoteSock,SEND)
-    AcceptThread=PostTransmitter(self.RemoteSock,self.ClientSock,RECEIVE)
+    SendThread=PostTransmitter(self.ClientSock,self.RemoteSock,SEND,PostInfo["AES_K"])
+    AcceptThread=PostTransmitter(self.RemoteSock,self.ClientSock,RECEIVE,PostInfo["AES_K"])
     SendThread.start()
     AcceptThread.start()
 

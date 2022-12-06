@@ -36,11 +36,12 @@ class PostTransmitter(threading.Thread):
   '''
   Recieve post from a socket,and transmit it to another.
   '''
-  def __init__(self,Sock_1,Sock_2,mode):
+  def __init__(self,Sock_1,Sock_2,mode,AES_K):
     threading.Thread.__init__(self)
     self.AcceptSock=Sock_1
     self.SendSock=Sock_2
-    self.mode=mode 
+    self.mode=mode
+    self.AES_K=AES_K
 
   def run(self):
     while True:
@@ -48,82 +49,14 @@ class PostTransmitter(threading.Thread):
         Post=self.AcceptSock.recv(MAX_BUFFER)
         #SafePost=Encipher(Post)
         if self.mode==SEND:
-          SafePost=encrypt.MyAESencrypt(Post)
+          SafePost=encrypt.MyRSAEncrypt(Post,self.AES_K)
         else: 
-          SafePost=encrypt.MyAESdecrypt(Post)
+          SafePost=encrypt.MyRSADecrypt(Post,self.AES_K)
         self.SendSock.send(SafePost)
       except BrokenPipeError:
         pass
       except ConnectionResetError:
         pass
-
-
-def HandShake(Post):
-  '''
-  Handle the handshake period of server and client.
-  ''' 
-    # +-----+----------+----------+
-    # | VER | NMETHODS | METHODS  |
-    # +-----+----------+----------+
-    # |  1  |    1     |  1~255   |
-    # +-----+----------+----------+
-  Version,MethodNum = struct.unpack('!BB',Post[:2])
-  Post=Post[2:]
-  Format='!'
-  for i in range(0,MethodNum):
-    Format+='B'
-  Methods = struct.unpack(Format,Post)
-  if 0 in Methods:
-    AcceptMethod=0x00 
-  else:
-    AcceptMethod=0xff
-    # If client doesn't support no authentacation mode, refuse its request.
-  Answer=struct.pack('!BB',Version,AcceptMethod)
-  return Answer
-
-def Verify(Post):
-  Version,ULen=struct.unpack('!BB',Post[:2])
-  Uname,PLen=struct.unpack('!'+str(ULen)+"sB",Post[2:3+ULen])
-  Pw,=struct.unpack('!'+str(PLen)+'s',Post[3+ULen:])
-  if Uname == bytes(Username,encoding='utf-8') and Pw == bytes(Passwd,encoding='utf-8'):
-    reply=0x00
-  else:
-    reply=0xff
-  Answer=struct.pack('!BB',Version,reply)
-  return Answer
-
-def Connect(Post):
-  '''
-  The second handshake with client.
-  '''
-  
-  PostInfo={}
-  if Post != b'':
-    PostInfo['Version'],PostInfo['Command'],PostInfo['RSV'],PostInfo['AddrType']\
-    = struct.unpack('!BBBB',Post[:4])
-
-  # AddressType:
-  # 0x01 - IPv4
-  # 0x03 - DomainName (not supported)
-  # 0x04 - IPv6
-  if PostInfo['AddrType'] == 0x01:
-    Length=4
-    # Parse RemoteServer's address by AddrType
-    Format='!'+str(Length)+'sH'
-    RawAddress,PostInfo['RemotePort']=struct.unpack(Format,Post[4:])
-    PostInfo['RemoteAddress']=socket.inet_ntoa(RawAddress)
-  else:
-    print('Error: Wrong address type.')
-    PostInfo['REP']=0x08
-    return (PostInfo,REFUSED)
-
-  # Respond to Client's Command.
-  if PostInfo['Command'] == 0x01:
-    PostInfo['REP']=0x00
-    return (PostInfo,TCP)
-  else:
-    PostInfo['REP']=0x02
-    return (PostInfo,REFUSED)
     
 class TCPHandler(threading.Thread):
   '''
@@ -144,13 +77,17 @@ class TCPHandler(threading.Thread):
     Post=self.ClientSock.recv(MAX_BUFFER)
     #Post=Encipher(RawPost)
     #PostInfo,Status=Connect(Post)
-    Status,RawAddress,RemotePort=struct.unpack("!B4s",Post)
-    RemoteAddress=socket.inet_ntoa(RawAddress)
+
+    Status,RemotePort,Length,AES_K=struct.unpack("!BHB16s",Post[:20])
+    print("recieve ASE_K",AES_K)
+    url=struct.unpack("!"+str(Length)+'s',Post[20:])[0]
+    RemoteAddress=socket.gethostbyname(url)
+    print("Connecting",url,RemoteAddress)
 
     if Status == TCP:
       try:
         RemoteSock=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
-        RemoteSock.connect(RemoteAddress,RemotePort)
+        RemoteSock.connect((RemoteAddress,RemotePort))
       except ConnectionRefusedError:
         print('Error: Connection refused.')
         RemoteSock.close()
@@ -168,8 +105,8 @@ class TCPHandler(threading.Thread):
       # Assemble the answer
       Answer=struct.pack('!B',1)
       self.ClientSock.send(Answer)
-      SendThread=PostTransmitter(self.ClientSock,RemoteSock,RECEIVE)
-      AcceptThread=PostTransmitter(RemoteSock,self.ClientSock,SEND)
+      SendThread=PostTransmitter(self.ClientSock,RemoteSock,RECEIVE,AES_K)
+      AcceptThread=PostTransmitter(RemoteSock,self.ClientSock,SEND,AES_K)
       SendThread.start()
       AcceptThread.start()
       # RAM leakage warning
