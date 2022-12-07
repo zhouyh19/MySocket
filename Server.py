@@ -17,30 +17,16 @@ MAX_CLIENT=3 # Maximum waiting clients num
 SEND=0
 RECEIVE=1
 
-Method=0 # Authentacation method.
-# 0 represents no authentacation
-# 2 represents Username-Password
-Username=''
-Passwd=''
-
-def Encipher(Post):
-  CipheredPost=b''
-  Key = 0x3c
-  for byte in Post:
-    Cipheredbyte=byte^Key
-    CipheredPost+=bytes((Cipheredbyte,))
-  return CipheredPost
-
-
 class PostTransmitter(threading.Thread):
   '''
   Recieve post from a socket,and transmit it to another.
   '''
-  def __init__(self,Sock_1,Sock_2,mode,AES_K):
+  def __init__(self,Sock_1,Sock_2,mode,OtherPub,AES_K):
     threading.Thread.__init__(self)
     self.AcceptSock=Sock_1
     self.SendSock=Sock_2
     self.mode=mode
+    self.OtherPub=OtherPub
     self.AES_K=AES_K
 
   def run(self):
@@ -49,14 +35,21 @@ class PostTransmitter(threading.Thread):
         Post=self.AcceptSock.recv(MAX_BUFFER)
         #SafePost=Encipher(Post)
         if self.mode==SEND:
-          SafePost=encrypt.MyRSAEncrypt(Post,self.AES_K)
+          SafePost=encrypt.MyFullEncrypt(Post,self.AES_K)
         else: 
-          SafePost=encrypt.MyRSADecrypt(Post,self.AES_K)
+          SafePost,valid=encrypt.MyFullDecrypt(Post,self.OtherPub,self.AES_K)
+          if not valid:
+            print("signature invalid")
+            self.SendSock.close()
+            self.AcceptSock.close()
+            return
         self.SendSock.send(SafePost)
       except BrokenPipeError:
         pass
       except ConnectionResetError:
         pass
+      finally:
+        return
     
 class TCPHandler(threading.Thread):
   '''
@@ -66,21 +59,27 @@ class TCPHandler(threading.Thread):
     threading.Thread.__init__(self)
     self.ClientSock=ClientSock
   def run(self):
-    '''if Method == 2:
-      Post=self.ClientSock.recv(MAX_BUFFER)
-      self.ClientSock.send(Verify(Post))'''
-    # First Handshake
-    '''RawPost=self.ClientSock.recv(MAX_BUFFER)
-    Post=Encipher(RawPost)
-    self.ClientSock.send(Encipher(HandShake(Post)))'''
-    # Second Handshake,gain information.
     Post=self.ClientSock.recv(MAX_BUFFER)
-    #Post=Encipher(RawPost)
-    #PostInfo,Status=Connect(Post)
+    Post=encrypt.MyRSAdecrypt(Post)
 
-    Status,RemotePort,Length,AES_K=struct.unpack("!BHB16s",Post[:20])
+    Status,RemotePort,Length,PubLen,AES_K=struct.unpack("!BHBH16s",Post[:22])
+    if not verified:
+      Status=REFUSED
     print("recieve ASE_K",AES_K)
-    url=struct.unpack("!"+str(Length)+'s',Post[20:])[0]
+    url=struct.unpack("!"+str(Length)+'s',Post[22:22+Length])[0]
+    Post=Post[22+Length:]
+    Version,ULen=struct.unpack('!BB',Post[:2])
+    Uname,PLen=struct.unpack('!'+str(ULen)+"sB",Post[2:3+ULen])
+    Pw,=struct.unpack('!'+str(PLen)+'s',Post[3+ULen:])
+    if Uname == bytes(Username,encoding='utf-8') and Pw == bytes(Passwd,encoding='utf-8'):
+      verified=True
+      print("id verified")
+    else:
+      verified=False
+      print("id not verified")
+
+    PubKey=open('other.pem','r').read().encode('utf-8')
+    print(PubKey)
     RemoteAddress=socket.gethostbyname(url)
     print("Connecting",url,RemoteAddress)
 
@@ -105,8 +104,8 @@ class TCPHandler(threading.Thread):
       # Assemble the answer
       Answer=struct.pack('!B',1)
       self.ClientSock.send(Answer)
-      SendThread=PostTransmitter(self.ClientSock,RemoteSock,RECEIVE,AES_K)
-      AcceptThread=PostTransmitter(RemoteSock,self.ClientSock,SEND,AES_K)
+      SendThread=PostTransmitter(self.ClientSock,RemoteSock,RECEIVE,PubKey,AES_K)
+      AcceptThread=PostTransmitter(RemoteSock,self.ClientSock,SEND,PubKey,AES_K)
       SendThread.start()
       AcceptThread.start()
       # RAM leakage warning

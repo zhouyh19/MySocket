@@ -18,19 +18,6 @@ MAX_CLIENT=3 # Maximum waiting clients num
 SEND=0
 RECEIVE=1
 
-Method=0 # Authentacation method.
-# 0 represents no authentacation
-# 2 represents Username-Password
-Username=''
-Passwd=''
-
-def Encipher(Post):
-  CipheredPost=b''
-  Key = 0x3c
-  for byte in Post:
-    Cipheredbyte=byte^Key
-    CipheredPost+=bytes((Cipheredbyte,))
-  return CipheredPost
 
 def Construct():
   ULen=len(Username)
@@ -96,11 +83,12 @@ class PostTransmitter(threading.Thread):
   '''
   Recieve post from a socket,and transmit it to another.
   '''
-  def __init__(self,Sock_1,Sock_2,mode,AES_K):
+  def __init__(self,Sock_1,Sock_2,mode,OtherPub,AES_K):
     threading.Thread.__init__(self)
     self.AcceptSock=Sock_1
     self.SendSock=Sock_2
     self.mode=mode
+    self.OtherPub=OtherPub
     self.AES_K=AES_K
 
   def run(self):
@@ -111,12 +99,19 @@ class PostTransmitter(threading.Thread):
         if self.mode==SEND:
           SafePost=encrypt.MyFullEncrypt(Post,self.AES_K)
         else: 
-          SafePost=encrypt.MyFullDecrypt(Post,self.AES_K)
+          SafePost,valid=encrypt.MyFullDecrypt(Post,self.OtherPub,self.AES_K)
+          if not valid:
+            print("signature invalid")
+            self.SendSock.close()
+            self.AcceptSock.close()
+            return
         self.SendSock.send(SafePost)
       except BrokenPipeError:
         pass
       except ConnectionResetError:
         pass
+      finally:
+        return
 
 
 class TCPHandler(threading.Thread):
@@ -132,23 +127,21 @@ class TCPHandler(threading.Thread):
     except:
       print('Some error occured.')
   def run(self):
-    '''if Method == 2:
-      Request=Construct()
-      self.RemoteSock.send(Request)
-      Answer=self.RemoteSock.recv(MAX_BUFFER)
-      if Answer != b'\x05\x00':
-        print('Invalid Username or wrong password.')
-        os.sys.exit()'''
-    
+    Pub=open("public_key.pem",'r')
+    OtherPub=open('other.pem','r').read()
+    PubKey=Pub.read().encode('utf-8')
+
     Post=self.ClientSock.recv(MAX_BUFFER)
-    #Post=Encipher(RawPost)
     self.ClientSock.send(HandShake(Post))
 
     Post=self.ClientSock.recv(MAX_BUFFER)
     PostInfo,status=Connect(Post,self.RemoteSock)
     print("sending aes",PostInfo["AES_K"],len(PostInfo["AES_K"]))
-    fmt="!BHB16s"+str(PostInfo["Length"])+"s"
-    Post=struct.pack(fmt,status,PostInfo["RemotePort"],PostInfo["Length"],PostInfo["AES_K"],PostInfo["url"])
+    
+    PubLen=len(PubKey)
+    fmt="!BHBH16s"+str(PostInfo["Length"])+"s"
+    Post=struct.pack(fmt,status,PostInfo["RemotePort"],PostInfo["Length"],PubLen,PostInfo["AES_K"],PostInfo["url"])+Construct()
+    Post=encrypt.MyRSAencrypt(Post,OtherPub)
     self.RemoteSock.send(Post)
     Post=self.RemoteSock.recv(MAX_BUFFER)
 
@@ -168,8 +161,8 @@ class TCPHandler(threading.Thread):
       self.ClientSock.close()
       return
 
-    SendThread=PostTransmitter(self.ClientSock,self.RemoteSock,SEND,PostInfo["AES_K"])
-    AcceptThread=PostTransmitter(self.RemoteSock,self.ClientSock,RECEIVE,PostInfo["AES_K"])
+    SendThread=PostTransmitter(self.ClientSock,self.RemoteSock,SEND,OtherPub,PostInfo["AES_K"])
+    AcceptThread=PostTransmitter(self.RemoteSock,self.ClientSock,RECEIVE,OtherPub,PostInfo["AES_K"])
     SendThread.start()
     AcceptThread.start()
 

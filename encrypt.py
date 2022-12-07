@@ -1,4 +1,3 @@
-
 from Crypto.Cipher import AES,PKCS1_OAEP
 from Crypto.Hash import SHA256
 from Crypto.PublicKey import RSA
@@ -40,9 +39,8 @@ def MyFullEncrypt(text,AES_= b'AKeyForAESlen=16'):
     
 
 
-def MyFullDecrypt(cipher,AES_K= b'AKeyForAESlen=16'):
-    PubK = open('other.pem')
-    other_public_key = RSA.import_key(PubK.read())
+def MyFullDecrypt(cipher,other_public_key,AES_K= b'AKeyForAESlen=16'):
+    other_public_key=RSA.import_key(other_public_key)
     aesdcr = MyAESdecrypt(cipher,AES_K)
     aesdcr = unpad(aesdcr,16)
     lenM = int(str(unpad(aesdcr[0:16],16),encoding='utf-8'))
@@ -54,12 +52,11 @@ def MyFullDecrypt(cipher,AES_K= b'AKeyForAESlen=16'):
         valid=True
     except (ValueError,TypeError):
         valid=False
-    return M
+    return M,valid
 
 
-def MyRSAencrypt(text):
-    PubK = open('other.pem')
-    other_public_key = RSA.import_key(PubK.read())
+def MyRSAencrypt(text,other_public_key):
+    other_public_key=RSA.import_key(other_public_key)
     text = text.encode('utf-8')
     text = pad(text,16)
     cipher = PKCS1_OAEP.new(other_public_key)
@@ -73,13 +70,3 @@ def MyRSAdecrypt(encrypted):
     decrypted = cipher.decrypt(encrypted)
     decrypted = unpad(decrypted,16)
     return decrypted
-
-
-
-''' 
-test_message = 'try test our socket program'
-public_key = RSA.import_key(open('public_key.pem').read())
-cipher = MyFullEncrypt(test_message)
-MyFullDecrypt(cipher,public_key)
-'''   
-generateRSAkeys()
